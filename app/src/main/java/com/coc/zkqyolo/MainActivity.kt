@@ -86,7 +86,7 @@ fun ServiceInfo(modifier: Modifier = Modifier) {
             )
         }
         Text(
-            text = "本插件仅用于游戏内文字与建筑数量的识别辅助，全部源代码已在 Gitee 开源并采用 MIT 协议发布。严禁将本插件用于任何违反法律法规的用途。使用者需自行承担因不当使用所产生的一切责任，与原作者无关。",
+            text = "本插件仅用于游戏内文字与建筑数量的识别辅助，全部源代码已在 Gitee 开源并采用 AGPL-3.0 协议发布。严禁将本插件用于任何违反法律法规的用途。使用者需自行承担因不当使用所产生的一切责任，与原作者无关。",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
