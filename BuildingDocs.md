@@ -1,4 +1,4 @@
-# ZKQyolo — AI Detector Inference Service for Android
+# ZKQbuilding — AI Detector Inference Service for Android
 
 **Version:** 1.08
 
@@ -37,7 +37,7 @@ curl -X POST http://localhost:13462/detect \
 You can also start the service without opening the app UI:
 
 ```
-adb shell am start-foreground-service -n com.building.plugin/.service.YoloService
+adb shell am start-foreground-service -n com.building.plugin/.service.DetectorService
 ```
 
 ---
@@ -247,4 +247,3 @@ curl -X POST http://localhost:13462/detect \
   -H "Content-Type: application/octet-stream" \
   --data-binary @image.png
 ```
-

@@ -24,8 +24,8 @@ data class DetectionResult(
     val classIndex: Int
 )
 
-object YoloDetector {
-    private const val TAG = "YoloDetector"
+object BuildingDetector {
+    private const val TAG = "BuildingDetector"
     private const val DEFAULT_MODEL_PATH = "obstacles_detector.tflite"
 
     private var appContext: Context? = null
@@ -60,7 +60,7 @@ object YoloDetector {
         clearWeights()
 
         val context = appContext
-            ?: throw IllegalStateException("YoloDetector must be initialized before loading weights")
+            ?: throw IllegalStateException("BuildingDetector must be initialized before loading weights")
 
         val model = loadModelFile(context, modelType)
         val options = Interpreter.Options()
@@ -96,7 +96,7 @@ object YoloDetector {
     }
 
     private fun loadModelFile(context: Context, modelType: String): MappedByteBuffer {
-        // All YOLO models are expected to be bundled under app/src/main/assets.
+        // All models are expected to be bundled under app/src/main/assets.
         val assetFileName = when (modelType) {
             "walls-detect" -> "walls_detector.tflite"
             "numbers" -> "numbers_detector.tflite"
@@ -163,7 +163,7 @@ object YoloDetector {
 
     /**
      * Runs inference on the given bitmap. Model must already be loaded via loadWeights().
-     * YOLO26 output does not require NMS — results are used directly.
+     * Model output does not require NMS — results are used directly.
      */
     fun detect(
         bitmap: Bitmap,

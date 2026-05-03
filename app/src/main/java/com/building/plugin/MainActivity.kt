@@ -23,7 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.building.plugin.service.YoloService
+import com.building.plugin.service.DetectorService
 
 
 class MainActivity : ComponentActivity() {
@@ -31,8 +31,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Auto-start the YOLO service when the activity launches
-        val serviceIntent = Intent(this, YoloService::class.java)
+        // Auto-start the detector service when the activity launches
+        val serviceIntent = Intent(this, DetectorService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent)
         } else {

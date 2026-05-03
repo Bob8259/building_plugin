@@ -50,7 +50,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // TensorFlow Lite for YOLO model inference
+    // TensorFlow Lite for model inference
     implementation(libs.tensorflow.lite)
 
     // NanoHTTPD lightweight embedded HTTP server

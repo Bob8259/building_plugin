@@ -5,10 +5,10 @@ import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
-import com.building.plugin.detector.YoloDetector
+import com.building.plugin.detector.BuildingDetector
 
 /**
- * Lightweight HTTP server exposing YOLO inference endpoints on the given port.
+ * Lightweight HTTP server exposing detector inference endpoints on the given port.
  *
  * Endpoints:
  *   GET  /status  — health check
@@ -16,10 +16,10 @@ import com.building.plugin.detector.YoloDetector
  *   POST /detect  — run inference on a posted image
  *   POST /clear   — unload model weights
  */
-class YoloHttpServer(port: Int) : NanoHTTPD(port) {
+class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
 
     companion object {
-        private const val TAG = "YoloHttpServer"
+        private const val TAG = "DetectorHttpServer"
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -51,8 +51,8 @@ class YoloHttpServer(port: Int) : NanoHTTPD(port) {
         val json = JSONObject()
             .put("status", "running")
             .put("version", "1.08")
-            .put("modelLoaded", YoloDetector.isModelLoaded())
-            .put("modelType", YoloDetector.getModelType() ?: JSONObject.NULL)
+            .put("modelLoaded", BuildingDetector.isModelLoaded())
+            .put("modelType", BuildingDetector.getModelType() ?: JSONObject.NULL)
         return jsonResponse(Response.Status.OK, json)
     }
 
@@ -72,7 +72,7 @@ class YoloHttpServer(port: Int) : NanoHTTPD(port) {
         val modelType = json.getString("modelType")
 
         return try {
-            YoloDetector.loadWeights(modelType)
+            BuildingDetector.loadWeights(modelType)
             jsonResponse(Response.Status.OK, JSONObject().put("success", true))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load model", e)
@@ -85,7 +85,7 @@ class YoloHttpServer(port: Int) : NanoHTTPD(port) {
 
     // ── POST /detect ────────────────────────────────────────────────────────
     private fun handleDetect(session: IHTTPSession): Response {
-        if (!YoloDetector.isModelLoaded()) {
+        if (!BuildingDetector.isModelLoaded()) {
             return jsonResponse(
                 Response.Status.BAD_REQUEST,
                 JSONObject().put("error", "No model loaded. Call /load first.")
@@ -115,7 +115,7 @@ class YoloHttpServer(port: Int) : NanoHTTPD(port) {
                 JSONObject().put("error", "Failed to decode image from request body.")
             )
 
-        val rawDetections = YoloDetector.detect(
+        val rawDetections = BuildingDetector.detect(
             bitmap = bitmap,
             clearWeightsAfter = false,
             threshold = threshold
@@ -123,7 +123,7 @@ class YoloHttpServer(port: Int) : NanoHTTPD(port) {
         bitmap.recycle()
 
         // Apply NMS-like filtering to remove duplicate close detections
-        val detections = YoloDetector.filterCloseDetections(rawDetections, distanceThreshold)
+        val detections = BuildingDetector.filterCloseDetections(rawDetections, distanceThreshold)
 
         // Build JSON response
         val detectionsArray = JSONArray()
@@ -147,7 +147,7 @@ class YoloHttpServer(port: Int) : NanoHTTPD(port) {
 
     // ── POST /clear ─────────────────────────────────────────────────────────
     private fun handleClear(): Response {
-        YoloDetector.clearWeights()
+        BuildingDetector.clearWeights()
         return jsonResponse(Response.Status.OK, JSONObject().put("success", true))
     }
 
