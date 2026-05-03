@@ -1,4 +1,4 @@
-package com.coc.zkqyolo
+package com.building.plugin
 
 import android.content.Intent
 import android.os.Build
@@ -23,7 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.coc.zkqyolo.service.YoloService
+import com.building.plugin.service.YoloService
 
 
 class MainActivity : ComponentActivity() {

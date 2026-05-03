@@ -33,7 +33,7 @@
             android:exported="true"
             android:foregroundServiceType="specialUse">
             <intent-filter>
-                <action android:name="com.coc.zkqyolo.START_YOLO_SERVICE" />
+                <action android:name="com.building.plugin.START_YOLO_SERVICE" />
             </intent-filter>
         </service>
 

@@ -1,11 +1,11 @@
-package com.coc.zkqyolo.server
+package com.building.plugin.server
 
 import android.graphics.BitmapFactory
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
-import com.coc.zkqyolo.detector.YoloDetector
+import com.building.plugin.detector.YoloDetector
 
 /**
  * Lightweight HTTP server exposing YOLO inference endpoints on the given port.

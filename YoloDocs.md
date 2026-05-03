@@ -37,7 +37,7 @@ curl -X POST http://localhost:13462/detect \
 You can also start the service without opening the app UI:
 
 ```
-adb shell am start-foreground-service -n com.coc.zkqyolo/.service.YoloService
+adb shell am start-foreground-service -n com.building.plugin/.service.YoloService
 ```
 
 ---

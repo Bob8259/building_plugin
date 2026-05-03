@@ -1,4 +1,4 @@
-package com.coc.zkqyolo.service
+package com.building.plugin.service
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -8,13 +8,13 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
-import com.coc.zkqyolo.detector.YoloDetector
-import com.coc.zkqyolo.server.YoloHttpServer
+import com.building.plugin.detector.YoloDetector
+import com.building.plugin.server.YoloHttpServer
 
 /**
  * Foreground service that hosts the YOLO HTTP server on port 13462.
  * Start via ADB:
- *   adb shell am start-foreground-service -n com.coc.zkqyolo/.service.YoloService
+ *   adb shell am start-foreground-service -n com.building.plugin/.service.YoloService
  */
 class YoloService : Service() {
 

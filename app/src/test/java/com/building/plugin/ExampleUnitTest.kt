@@ -1,4 +1,4 @@
-package com.coc.zkqyolo
+package com.building.plugin
 
 import org.junit.Test
 

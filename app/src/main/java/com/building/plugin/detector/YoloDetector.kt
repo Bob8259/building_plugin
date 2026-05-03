@@ -1,4 +1,4 @@
-package com.coc.zkqyolo.detector
+package com.building.plugin.detector
 
 import android.content.Context
 import android.graphics.Bitmap
