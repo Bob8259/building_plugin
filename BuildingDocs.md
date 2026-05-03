@@ -1,8 +1,8 @@
-# ZKQbuilding — AI Detector Inference Service for Android
+# ZKQbuilding — Detector Inference Service for Android
 
 **Version:** 1.08
 
-An Android app that runs a local HTTP server exposing AI detector inference. The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
+An Android app that runs a local HTTP server exposing detector inference. The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
 
 ---
 
