@@ -50,7 +50,7 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
     private fun handleStatus(): Response {
         val json = JSONObject()
             .put("status", "running")
-            .put("version", "1.08")
+            .put("version", "1.09")
             .put("modelLoaded", BuildingDetector.isModelLoaded())
             .put("modelType", BuildingDetector.getModelType() ?: JSONObject.NULL)
         return jsonResponse(Response.Status.OK, json)
