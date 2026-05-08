@@ -37,6 +37,7 @@ android {
     }
     androidResources {
         noCompress += "tflite"
+        noCompress += "onnx"
     }
 }
 
@@ -52,6 +53,9 @@ dependencies {
 
     // TensorFlow Lite for model inference
     implementation(libs.tensorflow.lite)
+
+    // ONNX Runtime for model inference
+    implementation(libs.onnx.runtime)
 
     // NanoHTTPD lightweight embedded HTTP server
     implementation(libs.nanohttpd)
