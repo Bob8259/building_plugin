@@ -72,22 +72,10 @@ fun ServiceInfo(modifier: Modifier = Modifier) {
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 32.dp)
             )
-            Text(
-                text = "若需要使用以下功能，则需要本插件：",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 16.dp)
-            )
-            Text(
-                text = "移除障碍物，用宝石加速建筑，智能下兵，都城对战，批量建造/升级城墙，升级装备，升级战宠，部署英雄战旗，使用工人学徒/研究助手",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp)
-            )
         }
         Text(
-            text = "本插件仅用于游戏内文字与建筑的识别辅助，100%基于图色画面识别，全部源代码已在 Gitee 开源并采用 AGPL-3.0 协议发布。本插件为通用插件，可配合任意进程使用。本插件不截取设备画面，不读取，不修改内存，不侵入，不控制任何程序，不干扰，不修改设备/软件运行环境。严禁将本插件用于任何违反法律法规的用途。使用者需自行承担因不当使用所产生的一切责任，与原作者无关。",
-            fontSize = 11.sp,
+            text = "本插件仅用于游戏内文字与建筑的识别辅助，100%基于图色画面识别，全部源代码已在 Gitee 开源并采用 AGPL-3.0 协议发布，可配合任意进程使用。本插件不截取设备画面，不读取，不修改内存，不侵入，不控制任何程序，不干扰，不修改设备/软件运行环境。严禁将本插件用于任何违反法律法规的用途。若违反，使用者需自行承担所有责任，与原作者无关。",
+            fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier
