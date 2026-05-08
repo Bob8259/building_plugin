@@ -157,17 +157,31 @@ internal object ImagePreprocessor {
         scale: Float,
         offX: Float,
         offY: Float,
-        threshold: Float
+        threshold: Float,
+        normalizedCoords: Boolean = true
     ): List<DetectionResult> {
         val detections = mutableListOf<DetectionResult>()
         for (detection in output) {
             // detection: [x1, y1, x2, y2, score, class]
             val score = detection[4]
             if (score > threshold) {
-                val x1 = (detection[0] * inputWidth - offX) / scale
-                val y1 = (detection[1] * inputHeight - offY) / scale
-                val x2 = (detection[2] * inputWidth - offX) / scale
-                val y2 = (detection[3] * inputHeight - offY) / scale
+                val x1: Float
+                val y1: Float
+                val x2: Float
+                val y2: Float
+                if (normalizedCoords) {
+                    // Model outputs normalized coords (0–1), scale to pixel space
+                    x1 = (detection[0] * inputWidth - offX) / scale
+                    y1 = (detection[1] * inputHeight - offY) / scale
+                    x2 = (detection[2] * inputWidth - offX) / scale
+                    y2 = (detection[3] * inputHeight - offY) / scale
+                } else {
+                    // Model outputs pixel-space coords, just remove padding and rescale
+                    x1 = (detection[0] - offX) / scale
+                    y1 = (detection[1] - offY) / scale
+                    x2 = (detection[2] - offX) / scale
+                    y2 = (detection[3] - offY) / scale
+                }
                 val classIdx = detection[5]
 
                 detections.add(

@@ -91,14 +91,8 @@ internal class TfliteRuntime {
         private fun loadModelFile(context: Context, modelType: String): MappedByteBuffer {
             val assetFileName = when (modelType) {
                 "walls-detect" -> "walls_detector.tflite"
-                "numbers" -> "numbers_detector.tflite"
-                "building-detect" -> "my_building_detector.tflite"
-                "capital-building-detect" -> "capital_building_detector.tflite"
-                "remove-obstacle" -> DEFAULT_MODEL_PATH
-                "clan-war-numbers" -> "clan_war_number_detector.tflite"
-                "clan-game" -> "clan_game_detector.tflite"
                 else -> throw IllegalArgumentException(
-                    "Unknown modelType: \"$modelType\". Valid types: walls-detect, numbers, building-detect, building-detect-onnx, capital-building-detect, remove-obstacle, clan-war-numbers, clan-game"
+                    "Unknown modelType: \"$modelType\". Valid types: walls-detect, numbers, building-detect, capital-building-detect, remove-obstacle, clan-war-numbers, clan-game"
                 )
             }
 

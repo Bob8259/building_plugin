@@ -36,9 +36,18 @@ object BuildingDetector {
         val context = appContext
             ?: throw IllegalStateException("BuildingDetector must be initialized before loading weights")
 
-        if (modelType == "building-detect-onnx") {
+        if (modelType == "building-detect" || modelType == "capital-building-detect" || modelType == "clan-game" || modelType == "clan-war-numbers" || modelType == "numbers" || modelType == "remove-obstacle") {
+            val assetName = when (modelType) {
+                "building-detect" -> "my_building_detector.onnx"
+                "capital-building-detect" -> "capital_building_detector.onnx"
+                "clan-game" -> "clan_game_detector.onnx"
+                "clan-war-numbers" -> "clan_war_number_detector.onnx"
+                "numbers" -> "numbers_detector.onnx"
+                "remove-obstacle" -> "obstacles_detector.onnx"
+                else -> error("unreachable")
+            }
             val runtime = OnnxRuntime()
-            runtime.load(context, "my_building_detector.onnx")
+            runtime.load(context, assetName)
             onnxRuntime = runtime
             activeRuntime = ActiveRuntime.ONNX
         } else {

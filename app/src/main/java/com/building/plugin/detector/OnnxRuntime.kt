@@ -96,7 +96,8 @@ internal class OnnxRuntime {
         val outputArray = results[0].value as Array<Array<FloatArray>>
 
         val detections = ImagePreprocessor.parseDetections(
-            outputArray[0], inputWidth, inputHeight, scale, offX, offY, threshold
+            outputArray[0], inputWidth, inputHeight, scale, offX, offY, threshold,
+            normalizedCoords = false
         )
 
         results.close()
