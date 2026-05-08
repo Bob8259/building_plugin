@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Build
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -64,6 +65,11 @@ object BuildingDetector {
 
         val model = loadModelFile(context, modelType)
         val options = Interpreter.Options()
+        // Disable XNNPACK on devices below Android 9 (API 28) to prevent
+        // native SIGSEGV crashes on older ARM CPUs (e.g. Cortex-A53).
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            options.setUseXNNPACK(false)
+        }
         interpreter = Interpreter(model, options)
 
         val inputTensor = interpreter!!.getInputTensor(0)
