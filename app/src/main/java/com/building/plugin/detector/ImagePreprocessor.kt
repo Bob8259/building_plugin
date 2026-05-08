@@ -7,12 +7,9 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.os.Build
 import androidx.core.graphics.createBitmap
-import org.tensorflow.lite.DataType
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 /**
- * Shared image preprocessing utilities used by both TFLite and ONNX runtimes.
+ * Shared image preprocessing utilities for ONNX runtime.
  */
 internal object ImagePreprocessor {
 
@@ -77,73 +74,6 @@ internal object ImagePreprocessor {
             softwareBitmap.recycle()
         }
         return floatArray
-    }
-
-    /**
-     * Converts bitmap to ByteBuffer in NHWC format for TFLite.
-     */
-    fun convertBitmapToByteBuffer(
-        bitmap: Bitmap,
-        inputWidth: Int,
-        inputHeight: Int,
-        inputDataType: DataType,
-        inputScale: Float,
-        inputZeroPoint: Int
-    ): ByteBuffer {
-        val bufferSize = if (inputDataType == DataType.FLOAT32) {
-            4 * inputWidth * inputHeight * 3
-        } else {
-            inputWidth * inputHeight * 3
-        }
-
-        val byteBuffer = ByteBuffer.allocateDirect(bufferSize)
-        byteBuffer.order(ByteOrder.nativeOrder())
-
-        // HARDWARE bitmaps (API 26+) don't support getPixels; copy to software config
-        val softwareBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            bitmap.config == Bitmap.Config.HARDWARE
-        ) {
-            bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        } else {
-            bitmap
-        }
-
-        val intValues = IntArray(inputWidth * inputHeight)
-        softwareBitmap.getPixels(intValues, 0, softwareBitmap.width, 0, 0, softwareBitmap.width, softwareBitmap.height)
-
-        var pixel = 0
-        repeat(inputHeight) {
-            repeat(inputWidth) {
-                val value = intValues[pixel++]
-                val r = (value shr 16 and 0xFF)
-                val g = (value shr 8 and 0xFF)
-                val b = (value and 0xFF)
-
-                when (inputDataType) {
-                    DataType.FLOAT32 -> {
-                        byteBuffer.putFloat(r / 255.0f)
-                        byteBuffer.putFloat(g / 255.0f)
-                        byteBuffer.putFloat(b / 255.0f)
-                    }
-                    DataType.INT8 -> {
-                        byteBuffer.put((r / 255.0f / inputScale + inputZeroPoint).toInt().toByte())
-                        byteBuffer.put((g / 255.0f / inputScale + inputZeroPoint).toInt().toByte())
-                        byteBuffer.put((b / 255.0f / inputScale + inputZeroPoint).toInt().toByte())
-                    }
-                    DataType.UINT8 -> {
-                        byteBuffer.put(r.toByte())
-                        byteBuffer.put(g.toByte())
-                        byteBuffer.put(b.toByte())
-                    }
-                    else -> {}
-                }
-            }
-        }
-
-        if (softwareBitmap != bitmap) {
-            softwareBitmap.recycle()
-        }
-        return byteBuffer
     }
 
     /**

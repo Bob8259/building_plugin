@@ -36,7 +36,6 @@ android {
         compose = true
     }
     androidResources {
-        noCompress += "tflite"
         noCompress += "onnx"
     }
 }
@@ -50,9 +49,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-
-    // TensorFlow Lite for model inference
-    implementation(libs.tensorflow.lite)
 
     // ONNX Runtime for model inference
     implementation(libs.onnx.runtime)
