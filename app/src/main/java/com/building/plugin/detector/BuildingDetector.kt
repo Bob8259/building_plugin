@@ -36,11 +36,12 @@ object BuildingDetector {
             "capital-building-detect" -> "capital_building_detector.onnx"
             "clan-game" -> "clan_game_detector.onnx"
             "clan-war-numbers" -> "clan_war_number_detector.onnx"
+            "main-base-battle" -> "main_base_battle.onnx"
             "numbers" -> "numbers_detector.onnx"
             "remove-obstacle" -> "obstacles_detector.onnx"
             "walls-detect" -> "walls_detector.onnx"
             else -> throw IllegalArgumentException(
-                "Unknown modelType: \"$modelType\". Valid types: walls-detect, numbers, building-detect, capital-building-detect, remove-obstacle, clan-war-numbers, clan-game"
+                "Unknown modelType: \"$modelType\". Valid types: walls-detect, numbers, building-detect, capital-building-detect, remove-obstacle, clan-war-numbers, clan-game, main-base-battle"
             )
         }
 

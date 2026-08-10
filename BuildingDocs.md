@@ -56,6 +56,7 @@ All detector models are expected to be bundled in the APK assets directory.
 | `"remove-obstacle"` | `obstacles_detector.tflite` | Bundled in assets |
 | `"clan-war-numbers"` | `clan_war_number_detector.tflite` | Bundled in assets |
 | `"clan-game"` | `clan_game_detector.tflite` | Bundled in assets |
+| `"main-base-battle"` | `main_base_battle.onnx` | Bundled in assets |
 
 > **Note:** `modelType` is required. Omitting it or passing an unrecognized value will result in an error.
 > If a model asset has not been packaged under `app/src/main/assets`, `/load` will fail with a missing-asset error.
@@ -119,7 +120,7 @@ Load model weights into the TFLite interpreter. If the same model type is alread
 **Error response (400) — missing or invalid `modelType`:**
 
 ```json
-{ "success": false, "error": "\"modelType\" is required. Valid types: walls-detect, numbers, building-detect, capital-building-detect, remove-obstacle, clan-war-numbers, clan-game" }
+{ "success": false, "error": "\"modelType\" is required. Valid types: walls-detect, numbers, building-detect, capital-building-detect, remove-obstacle, clan-war-numbers, clan-game, main-base-battle" }
 ```
 
 **Error response (500) — model failed to load:**
