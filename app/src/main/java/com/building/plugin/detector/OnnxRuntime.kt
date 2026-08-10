@@ -1,12 +1,11 @@
 package com.building.plugin.detector
 
-import android.content.Context
 import android.graphics.Bitmap
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.TensorInfo
-import java.io.IOException
+import java.io.File
 import java.nio.FloatBuffer
 
 /**
@@ -28,20 +27,16 @@ internal class OnnxRuntime {
 
     val isLoaded: Boolean get() = ortSession != null
 
-    fun load(context: Context, assetFileName: String) {
-        val modelBytes = try {
-            context.assets.open(assetFileName).use { it.readBytes() }
-        } catch (e: IOException) {
+    fun load(modelFile: File) {
+        if (!modelFile.exists() || !modelFile.isFile) {
             throw IllegalStateException(
-                "ONNX model asset \"$assetFileName\" was not found in app assets. " +
-                    "Bundle it under app/src/main/assets and keep .onnx files uncompressed.",
-                e
+                "ONNX model file \"${modelFile.absolutePath}\" does not exist in private storage."
             )
         }
 
         val env = OrtEnvironment.getEnvironment()
         ortEnvironment = env
-        val session = env.createSession(modelBytes)
+        val session = env.createSession(modelFile.absolutePath)
         ortSession = session
 
         // Read input shape from session metadata — expected [1, 3, H, W] (NCHW) or [1, H, W, 3] (NHWC)

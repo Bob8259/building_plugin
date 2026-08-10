@@ -13,6 +13,9 @@ object BuildingDetector {
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
+        // Extract all ONNX models from assets into private storage on app start,
+        // overwriting any existing files.
+        ModelAssetManager.startExtraction(context)
     }
 
     fun isModelLoaded(): Boolean = onnxRuntime?.isLoaded == true
@@ -45,8 +48,12 @@ object BuildingDetector {
             )
         }
 
+        // Resolve the model file in private storage; falls back to re-extracting
+        // all models once and throws a descriptive error if still missing.
+        val modelFile = ModelAssetManager.resolveModelFile(context, assetName)
+
         val runtime = OnnxRuntime()
-        runtime.load(context, assetName)
+        runtime.load(modelFile)
         onnxRuntime = runtime
 
         currentModelType = modelType

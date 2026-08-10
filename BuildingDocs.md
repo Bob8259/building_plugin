@@ -45,21 +45,26 @@ adb shell am start-foreground-service -n com.building.plugin/.service.DetectorSe
 ## Supported Models
 
 Models are loaded by passing a `modelType` string to the `/load` endpoint.
-All detector models are expected to be bundled in the APK assets directory.
+All detector models are bundled in the APK assets directory. On app start, every
+`.onnx` asset is extracted into the app's private storage (`filesDir/models`),
+overwriting any existing copies, and models are loaded from that private path.
+If a model file is missing from private storage at load time, the app
+automatically re-extracts all models once; if it is still missing, `/load`
+returns an error message.
 
 | `modelType` value | Model file | Source |
 |---|---|---|
-| `"walls-detect"` | `walls_detector.tflite` | Bundled in assets |
-| `"numbers"` | `numbers_detector.tflite` | Bundled in assets |
-| `"building-detect"` | `my_building_detector.tflite` | Bundled in assets |
-| `"capital-building-detect"` | `capital_building_detector.tflite` | Bundled in assets |
-| `"remove-obstacle"` | `obstacles_detector.tflite` | Bundled in assets |
-| `"clan-war-numbers"` | `clan_war_number_detector.tflite` | Bundled in assets |
-| `"clan-game"` | `clan_game_detector.tflite` | Bundled in assets |
-| `"main-base-battle"` | `main_base_battle.onnx` | Bundled in assets |
+| `"walls-detect"` | `walls_detector.onnx` | Assets → extracted to private storage on startup |
+| `"numbers"` | `numbers_detector.onnx` | Assets → extracted to private storage on startup |
+| `"building-detect"` | `my_building_detector.onnx` | Assets → extracted to private storage on startup |
+| `"capital-building-detect"` | `capital_building_detector.onnx` | Assets → extracted to private storage on startup |
+| `"remove-obstacle"` | `obstacles_detector.onnx` | Assets → extracted to private storage on startup |
+| `"clan-war-numbers"` | `clan_war_number_detector.onnx` | Assets → extracted to private storage on startup |
+| `"clan-game"` | `clan_game_detector.onnx` | Assets → extracted to private storage on startup |
+| `"main-base-battle"` | `main_base_battle.onnx` | Assets → extracted to private storage on startup |
 
 > **Note:** `modelType` is required. Omitting it or passing an unrecognized value will result in an error.
-> If a model asset has not been packaged under `app/src/main/assets`, `/load` will fail with a missing-asset error.
+> If a model asset has not been packaged under `app/src/main/assets`, `/load` will fail with a missing-model error.
 
 The detector dynamically reads the model's input/output tensor shapes, so any compatible object-detection TFLite model with output shape `[1, N, 6]` (where each detection is `[x1, y1, x2, y2, score, classIndex]`) will work.
 
