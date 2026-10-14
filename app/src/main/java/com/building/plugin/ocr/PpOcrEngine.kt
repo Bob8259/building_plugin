@@ -18,7 +18,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * PP-OCRv6 Small text recognition engine supporting both FP16 and FP32 ONNX models.
+ * PP-OCRv6 Small (FP16) text recognition engine.
  * Implemented in pure Kotlin + Android native graphics with zero OpenCV dependencies.
  *
  * Pipeline:
@@ -35,24 +35,8 @@ object PpOcrEngine {
 
     private const val TAG = "PpOcrEngine"
 
-    enum class Precision(val key: String) {
-        FP16("fp16"),
-        FP32("fp32");
-
-        companion object {
-            fun fromString(value: String?): Precision {
-                return when (value?.trim()?.lowercase()) {
-                    "fp32" -> FP32
-                    else -> FP16
-                }
-            }
-        }
-    }
-
-    private const val DET_FP16_ASSET = "det_fp16.onnx"
-    private const val REC_FP16_ASSET = "rec_fp16.onnx"
-    private const val DET_FP32_ASSET = "det_fp32.onnx"
-    private const val REC_FP32_ASSET = "rec_fp32.onnx"
+    private const val DET_ASSET = "det_fp16.onnx"
+    private const val REC_ASSET = "rec_fp16.onnx"
     private const val CHARACTERS_ASSET = "rec_characters.json"
 
     /** Fixed input height for recognizer */
@@ -85,10 +69,6 @@ object PpOcrEngine {
     private var recSession: OrtSession? = null
     private var dictChars: List<String>? = null
 
-    @Volatile
-    var currentPrecision: Precision? = null
-        private set
-
     /** Whether det and rec sessions are currently loaded. */
     val isLoaded: Boolean
         @Synchronized get() = detSession != null && recSession != null && dictChars != null
@@ -100,14 +80,14 @@ object PpOcrEngine {
 
     /**
      * Pre-loads the det + rec models and dictionary into memory.
-     * If the requested precision is already loaded, this is a no-op.
+     * No-op if already loaded.
      */
     @Synchronized
-    fun load(precision: Precision = Precision.FP16) {
-        if (isLoaded && currentPrecision == precision) return
+    fun load() {
+        if (isLoaded) return
         val context = appContext
             ?: throw IllegalStateException("PpOcrEngine must be initialized before loading")
-        ensureLoaded(context, precision)
+        ensureLoaded(context)
     }
 
     /**
@@ -121,14 +101,12 @@ object PpOcrEngine {
         recSession = null
         dictChars = null
         ortEnvironment = null
-        currentPrecision = null
     }
 
     /**
      * Runs full OCR (detection + recognition) on the given bitmap.
      *
      * @param bitmap input image (not recycled by this method)
-     * @param precision model precision to use ([Precision.FP16] or [Precision.FP32])
      * @param limit long-side limit for detection input
      * @param boxThreshold minimum confidence for a text box
      * @param detThreshold DB probability binarization threshold
@@ -139,7 +117,6 @@ object PpOcrEngine {
     @Synchronized
     fun recognize(
         bitmap: Bitmap,
-        precision: Precision = Precision.FP16,
         limit: Int = DEFAULT_LIMIT,
         boxThreshold: Float = DEFAULT_BOX_THRESHOLD,
         detThreshold: Float = DEFAULT_DET_THRESHOLD,
@@ -147,11 +124,11 @@ object PpOcrEngine {
         recMinWidth: Int = DEFAULT_REC_MIN_WIDTH
     ): List<OcrResult> {
         return try {
-            recognizeInternal(bitmap, precision, limit, boxThreshold, detThreshold, unclipRatio, recMinWidth)
+            recognizeInternal(bitmap, limit, boxThreshold, detThreshold, unclipRatio, recMinWidth)
         } catch (e: Exception) {
             Log.w(TAG, "OCR inference failed, reloading models and retrying once", e)
             clear()
-            recognizeInternal(bitmap, precision, limit, boxThreshold, detThreshold, unclipRatio, recMinWidth)
+            recognizeInternal(bitmap, limit, boxThreshold, detThreshold, unclipRatio, recMinWidth)
         }
     }
 
@@ -159,7 +136,6 @@ object PpOcrEngine {
 
     private fun recognizeInternal(
         bitmap: Bitmap,
-        precision: Precision,
         limit: Int,
         boxThreshold: Float,
         detThreshold: Float,
@@ -168,7 +144,7 @@ object PpOcrEngine {
     ): List<OcrResult> {
         val context = appContext
             ?: throw IllegalStateException("PpOcrEngine must be initialized before use")
-        ensureLoaded(context, precision)
+        ensureLoaded(context)
 
         val src = toSoftwareBitmap(bitmap)
         try {
@@ -233,26 +209,15 @@ object PpOcrEngine {
 
     // ── Model loading ───────────────────────────────────────────────────────
 
-    private fun ensureLoaded(context: Context, precision: Precision) {
-        if (isLoaded && currentPrecision == precision) return
+    private fun ensureLoaded(context: Context) {
+        if (isLoaded) return
 
         synchronized(this) {
-            if (isLoaded && currentPrecision == precision) return
-
-            // If switching precision, clean up previous sessions first
-            if (isLoaded && currentPrecision != precision) {
-                detSession?.close()
-                recSession?.close()
-                detSession = null
-                recSession = null
-            }
-
-            val detAsset = if (precision == Precision.FP16) DET_FP16_ASSET else DET_FP32_ASSET
-            val recAsset = if (precision == Precision.FP16) REC_FP16_ASSET else REC_FP32_ASSET
+            if (isLoaded) return
 
             val env = ortEnvironment ?: OrtEnvironment.getEnvironment()
-            val detFile = ModelAssetManager.resolveModelFile(context, detAsset)
-            val recFile = ModelAssetManager.resolveModelFile(context, recAsset)
+            val detFile = ModelAssetManager.resolveModelFile(context, DET_ASSET)
+            val recFile = ModelAssetManager.resolveModelFile(context, REC_ASSET)
             val dict = dictChars ?: loadDict(context)
 
             val sessionOptions = OrtSession.SessionOptions().apply {
@@ -263,8 +228,7 @@ object PpOcrEngine {
             recSession = env.createSession(recFile.absolutePath, sessionOptions)
             ortEnvironment = env
             dictChars = dict
-            currentPrecision = precision
-            Log.i(TAG, "PP-OCRv6 Small loaded (${precision.key.uppercase()}), dict size=${dict.size}")
+            Log.i(TAG, "PP-OCRv6 Small (FP16) loaded, dict size=${dict.size}")
         }
     }
 
@@ -596,4 +560,3 @@ object PpOcrEngine {
         val score: Float
     )
 }
-

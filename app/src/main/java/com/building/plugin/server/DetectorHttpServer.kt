@@ -7,7 +7,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.building.plugin.detector.BuildingDetector
 import com.building.plugin.ocr.PpOcrEngine
-import com.building.plugin.ocr.PpOcrEngine.Precision
 
 /**
  * Lightweight HTTP server exposing detector inference endpoints on the given port.
@@ -17,7 +16,7 @@ import com.building.plugin.ocr.PpOcrEngine.Precision
  *   POST /load       — load model weights
  *   POST /detect     — run inference on a posted image
  *   POST /clear      — unload model weights
- *   POST /ocr        — self-contained text recognition (PP-OCRv6 Small, FP16/FP32)
+ *   POST /ocr        — self-contained text recognition (PP-OCRv6 Small FP16)
  *   POST /ocr/load   — pre-load OCR models (optional warm-up)
  *   POST /ocr/clear  — unload OCR models
  */
@@ -38,7 +37,7 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
                 Method.POST if uri == "/detect" -> handleDetect(session)
                 Method.POST if uri == "/clear" -> handleClear()
                 Method.POST if uri == "/ocr" -> handleOcr(session)
-                Method.POST if uri == "/ocr/load" -> handleOcrLoad(session)
+                Method.POST if uri == "/ocr/load" -> handleOcrLoad()
                 Method.POST if uri == "/ocr/clear" -> handleOcrClear()
                 else -> jsonResponse(
                     Response.Status.NOT_FOUND,
@@ -62,7 +61,6 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
             .put("modelLoaded", BuildingDetector.isModelLoaded())
             .put("modelType", BuildingDetector.getModelType() ?: JSONObject.NULL)
             .put("ocrLoaded", PpOcrEngine.isLoaded)
-            .put("ocrPrecision", PpOcrEngine.currentPrecision?.key ?: JSONObject.NULL)
         return jsonResponse(Response.Status.OK, json)
     }
 
@@ -164,10 +162,9 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
     // ── POST /ocr ───────────────────────────────────────────────────────────
 
     /**
-     * Self-contained text recognition endpoint (PP-OCRv6 Small).
+     * Self-contained text recognition endpoint (PP-OCRv6 Small FP16).
      *
      * Query parameters (all optional):
-     *   precision    — "fp16" (default) or "fp32"
      *   limit        — det long-side limit (default 960)
      *   boxThreshold — minimum mean-probability box confidence (default 0.45)
      *   detThreshold — DB probability binarization threshold (default 0.20)
@@ -176,7 +173,6 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
      */
     private fun handleOcr(session: IHTTPSession): Response {
         val params = session.parameters
-        val precision = Precision.fromString(params["precision"]?.firstOrNull())
         val limit = params["limit"]?.firstOrNull()?.toIntOrNull()
             ?: PpOcrEngine.DEFAULT_LIMIT
         val boxThreshold = params["boxThreshold"]?.firstOrNull()?.toFloatOrNull()
@@ -207,7 +203,6 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
         val results = try {
             PpOcrEngine.recognize(
                 bitmap = bitmap,
-                precision = precision,
                 limit = limit,
                 boxThreshold = boxThreshold,
                 detThreshold = detThreshold,
@@ -234,9 +229,7 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
 
         return jsonResponse(
             Response.Status.OK,
-            JSONObject()
-                .put("precision", precision.key)
-                .put("results", resultsArray)
+            JSONObject().put("results", resultsArray)
         )
     }
 
@@ -244,25 +237,13 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
 
     /**
      * Optional warm-up endpoint: pre-loads det + rec models into memory.
-     * Query parameter or JSON body: precision="fp16" (default) or "fp32".
      */
-    private fun handleOcrLoad(session: IHTTPSession): Response {
+    private fun handleOcrLoad(): Response {
         return try {
-            val queryPrecision = session.parameters["precision"]?.firstOrNull()
-            val bodyPrecision = try {
-                val body = readBody(session)
-                if (body.isNotBlank()) {
-                    val json = JSONObject(body)
-                    if (json.has("precision") && !json.isNull("precision")) json.getString("precision") else null
-                } else null
-            } catch (_: Exception) {
-                null
-            }
-            val precision = Precision.fromString(queryPrecision ?: bodyPrecision)
-            PpOcrEngine.load(precision)
+            PpOcrEngine.load()
             jsonResponse(
                 Response.Status.OK,
-                JSONObject().put("success", true).put("precision", precision.key)
+                JSONObject().put("success", true)
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load OCR models", e)

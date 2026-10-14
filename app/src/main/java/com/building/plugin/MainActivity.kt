@@ -2,7 +2,7 @@ package com.building.plugin
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -33,16 +32,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.building.plugin.detector.BuildingDetector
+import com.building.plugin.ocr.PpOcrEngine
 import com.building.plugin.service.DetectorService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.random.Random
-
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,10 +68,54 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ServiceInfo(modifier: Modifier = Modifier) {
-    // State for the simulated detection run
+    val context = LocalContext.current
     var resultText by remember { mutableStateOf("") }
     var isRunning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    fun runOcrTest() {
+        if (isRunning) return
+        scope.launch {
+            isRunning = true
+            resultText = "正在加载模型并运行 OCR 识别…"
+            try {
+                withContext(Dispatchers.Default) {
+                    PpOcrEngine.initialize(context)
+
+                    val options = BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+                    val bitmap = context.assets.open("example.png").use { stream ->
+                        BitmapFactory.decodeStream(stream, null, options)
+                    } ?: throw IllegalStateException("无法从 assets 中加载 example.png")
+
+                    val start = System.currentTimeMillis()
+                    val results = try {
+                        PpOcrEngine.recognize(bitmap = bitmap)
+                    } finally {
+                        bitmap.recycle()
+                    }
+                    val elapsed = System.currentTimeMillis() - start
+
+                    if (results.isEmpty()) {
+                        resultText = "未检测到文字（耗时: ${elapsed} ms）"
+                    } else {
+                        val details = results.mapIndexed { idx, ocr ->
+                            val conf = (ocr.confidence * 100).roundToInt() / 100f
+                            val score = (ocr.score * 100).roundToInt() / 100f
+                            val box = "[${ocr.box.left.toInt()}, ${ocr.box.top.toInt()}, ${ocr.box.right.toInt()}, ${ocr.box.bottom.toInt()}]"
+                            "${idx + 1}. \"${ocr.text}\"\n   置信度: $conf | 检测分: $score | 坐标: $box"
+                        }.joinToString("\n\n")
+                        resultText = "识别完成（耗时: ${elapsed} ms）\n共识别到 ${results.size} 条文本：\n\n$details"
+                    }
+                }
+            } catch (e: Exception) {
+                resultText = "识别失败: ${e.message ?: "未知错误"}"
+            } finally {
+                isRunning = false
+            }
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -98,81 +141,39 @@ fun ServiceInfo(modifier: Modifier = Modifier) {
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Simulated detection button
+            // OCR Test Button
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
                 Button(
-                    onClick = {
-                        if (isRunning) return@Button
-                        scope.launch {
-                            isRunning = true
-                            resultText = "正在加载模型并执行检测…"
-                            try {
-                                withContext(Dispatchers.Default) {
-                                    // Load the main-base-battle model
-                                    BuildingDetector.loadWeights("main-base-battle")
-
-                                    // Generate 3 random 640x640 bitmaps
-                                    val bitmaps = (1..3).map {
-                                        Bitmap.createBitmap(
-                                            640, 640, Bitmap.Config.ARGB_8888
-                                        ).apply {
-                                            eraseColor(
-                                                Color.rgb(
-                                                    Random.nextInt(256),
-                                                    Random.nextInt(256),
-                                                    Random.nextInt(256)
-                                                )
-                                            )
-                                        }
-                                    }
-
-                                    // Run detection sequentially and measure total time
-                                    val start = System.currentTimeMillis()
-                                    for (bmp in bitmaps) {
-                                        BuildingDetector.detect(
-                                            bitmap = bmp,
-                                            clearWeightsAfter = false
-                                        )
-                                    }
-                                    val elapsed = System.currentTimeMillis() - start
-
-                                    // Free the generated bitmaps
-                                    bitmaps.forEach { it.recycle() }
-
-                                    resultText = "检测完成，总耗时：${elapsed} 毫秒"
-                                }
-                            } catch (e: Exception) {
-                                resultText = "检测失败：${e.message ?: "未知错误"}"
-                            } finally {
-                                isRunning = false
-                            }
-                        }
-                    },
+                    onClick = { runOcrTest() },
                     enabled = !isRunning
                 ) {
-                    Text(text = "模拟检测")
+                    Text(text = "OCR 模拟测试")
                 }
+            }
 
-                if (isRunning) {
-                    Spacer(modifier = Modifier.width(16.dp))
-                    CircularProgressIndicator(
-                        modifier = Modifier.height(24.dp)
-                    )
-                }
+            if (isRunning) {
+                Spacer(modifier = Modifier.height(20.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.height(28.dp)
+                )
             }
 
             if (resultText.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
                     text = resultText,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
                 )
             }
         }
+
         Text(
             text = "本插件仅用于游戏内文字与建筑的识别辅助，100%基于图色画面识别，全部源代码已在 Gitee 开源并采用 AGPL-3.0 协议发布，可配合任意进程使用。本插件不截取设备画面，不读取，不修改内存，不侵入，不控制任何程序，不干扰，不修改设备/软件运行环境。严禁将本插件用于任何违反法律法规的用途。若违反，使用者需自行承担所有责任，与原作者无关。",
             fontSize = 10.sp,
