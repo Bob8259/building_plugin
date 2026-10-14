@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.building.plugin.detector.BuildingDetector
+import com.building.plugin.ocr.PpOcrEngine
 import com.building.plugin.server.DetectorHttpServer
 
 /**
@@ -39,6 +40,7 @@ class DetectorService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
 
         BuildingDetector.initialize(this)
+        PpOcrEngine.initialize(this)
 
         if (httpServer == null) {
             httpServer = DetectorHttpServer(PORT)
@@ -54,6 +56,7 @@ class DetectorService : Service() {
         httpServer?.stop()
         httpServer = null
         BuildingDetector.clearWeights()
+        PpOcrEngine.clear()
         super.onDestroy()
     }
 

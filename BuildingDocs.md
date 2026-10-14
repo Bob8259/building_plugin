@@ -2,7 +2,7 @@
 
 **Version:** 1.11
 
-An Android app that runs a local HTTP server exposing detector inference. The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
+An Android app that runs a local HTTP server exposing detector inference and text recognition (PP-OCRv6 Small, FP16 & FP32). The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
 
 ---
 
@@ -11,7 +11,8 @@ An Android app that runs a local HTTP server exposing detector inference. The ap
 1. [Quick Start](#quick-start)
 2. [Supported Models](#supported-models)
 3. [API Reference](#api-reference)
-4. [Usage Examples](#usage-examples)
+4. [Text Recognition (PP-OCRv6 Small)](#text-recognition-ppocrv6-small)
+5. [Usage Examples](#usage-examples)
 
 ---
 
@@ -31,6 +32,14 @@ curl -X POST http://localhost:13462/load -d '{"modelType":"capital-building-dete
 
 # Run detection on an image
 curl -X POST http://localhost:13462/detect \
+  --data-binary @screenshot.png
+
+# Run text recognition (defaults to FP16, self-contained, no load step needed)
+curl -X POST http://localhost:13462/ocr \
+  --data-binary @screenshot.png
+
+# Run text recognition with FP32 precision
+curl -X POST "http://localhost:13462/ocr?precision=fp32" \
   --data-binary @screenshot.png
 ```
 
@@ -63,6 +72,18 @@ returns an error message.
 | `"clan-game"` | `clan_game_detector.onnx` | Assets → extracted to private storage on startup |
 | `"main-base-battle"` | `main_base_battle.onnx` | Assets → extracted to private storage on startup |
 
+The text recognition models are **not** loaded via `/load` — they are managed
+internally by the self-contained [`POST /ocr`](#post-ocr) endpoint. Both FP16
+(recommended for mobile efficiency) and FP32 precisions are bundled:
+
+| Model | Model file | Precision | Purpose |
+|---|---|---|---|
+| PP-OCRv6 Small (det fp16) | `det_fp16.onnx` | FP16 | DB text-line detection (~5.0 MB) |
+| PP-OCRv6 Small (rec fp16) | `rec_fp16.onnx` | FP16 | CTC text recognition (~10.6 MB) |
+| PP-OCRv6 Small (det fp32) | `det_fp32.onnx` | FP32 | DB text-line detection (~9.9 MB) |
+| PP-OCRv6 Small (rec fp32) | `rec_fp32.onnx` | FP32 | CTC text recognition (~21.2 MB) |
+| PP-OCRv6 character list | `rec_characters.json` | — | Character dictionary for CTC decoding |
+
 > **Note:** `modelType` is required. Omitting it or passing an unrecognized value will result in an error.
 > If a model asset has not been packaged under `app/src/main/assets`, `/load` will fail with a missing-model error.
 
@@ -87,7 +108,9 @@ Health check. Returns the server status, version, and current model state.
   "status": "running",
   "version": "1.11",
   "modelLoaded": true,
-  "modelType": "walls-detect"
+  "modelType": "walls-detect",
+  "ocrLoaded": false,
+  "ocrPrecision": null
 }
 ```
 
@@ -97,6 +120,8 @@ Health check. Returns the server status, version, and current model state.
 | `version` | string | Current server version. |
 | `modelLoaded` | boolean | Whether a model is currently loaded in memory. |
 | `modelType` | string \| null | The `modelType` that was used to load the current model, or `null` if none. |
+| `ocrLoaded` | boolean | Whether PP-OCRv6 Small det + rec models are currently loaded in memory. |
+| `ocrPrecision` | string \| null | Active OCR model precision (`"fp16"`, `"fp32"`), or `null` if not loaded. |
 
 ---
 
@@ -210,6 +235,116 @@ Unload model weights and free the TFLite interpreter.
 
 ---
 
+## Text Recognition (PP-OCRv6 Small)
+
+Text recognition is exposed as a **self-contained endpoint**: `POST /ocr`.
+It requires no explicit load step — the detection and recognition models are
+loaded lazily on the first request and stay resident in memory for fast
+subsequent calls. Two precisions are supported: **FP16** (default, ~15.6 MB
+combined, optimized for mobile efficiency) and **FP32** (~31.1 MB combined).
+
+Two optional management endpoints are also provided: `POST /ocr/load`
+(pre-warm models) and `POST /ocr/clear` (free OCR memory on demand). Models
+are also released automatically when the foreground service is destroyed.
+
+### Pipeline
+
+1. **Detection preprocess** — the image long side is scaled to `limit` (dims rounded to multiples of 32, max 4000) and normalized with ImageNet mean/std in BGR channel order.
+2. **DB postprocess** — the probability map is binarized at `detThreshold` (default `0.20`), 8-connected components are extracted, boxes below `boxThreshold` (default `0.45`) are filtered out, expanded by `unclipRatio` (default `1.4`), and scaled back to original image space.
+3. **Reading order sorting** — text boxes are grouped into horizontal rows and sorted top-to-bottom, left-to-right.
+4. **Recognition preprocess** — each text box is cropped, resized to height `48` (width clamped to `2..3200`), zero-padded to a minimum width of `recMinWidth` (default `320`), and normalized to `[-1, 1]` in RGB channel order.
+5. **CTC greedy decode** — index `0` is blank, index `1..N` map to characters in `rec_characters.json`, and index `N + 1` is space (`" "`).
+
+### POST /ocr
+
+Run text recognition on a posted image and return the recognized text lines with their bounding boxes, detection scores, and recognition confidences.
+
+**Request:**
+
+- **Body:** Raw image bytes (PNG, JPEG, etc. — any format decodable by `BitmapFactory`).
+- **Content-Type:** `application/octet-stream` (or any; the server reads raw bytes).
+- **Content-Length:** Must be set and non-zero.
+
+**Query parameters (all optional):**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `precision` | string | `"fp16"` | Model precision to use: `"fp16"` (recommended for mobile) or `"fp32"`. |
+| `limit` | int | `960` | Long-side limit for detection input. |
+| `boxThreshold` | float | `0.45` | Minimum mean-probability confidence for a text box. |
+| `detThreshold` | float | `0.20` | DB probability binarization threshold. |
+| `unclipRatio` | float | `1.4` | Box expansion ratio: `d = w * h * ratio / (2 * (w + h))`. |
+| `recMinWidth` | int | `320` | Minimum padded width for recognition input. |
+
+**Example:**
+
+```
+POST /ocr?precision=fp16&limit=960&boxThreshold=0.45 HTTP/1.1
+Content-Length: 54321
+
+<raw image bytes>
+```
+
+**Success response:**
+
+```json
+{
+  "precision": "fp16",
+  "results": [
+    {
+      "text": "Town Hall 15",
+      "score": 0.88,
+      "confidence": 0.96,
+      "x1": 102.0,
+      "y1": 200.0,
+      "x2": 350.0,
+      "y2": 232.0
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `precision` | string | The precision used for inference (`"fp16"` or `"fp32"`). |
+| `text` | string | Recognized text content of the line. |
+| `score` | float | Detection confidence — mean DB probability of the box (0–1). |
+| `confidence` | float | Recognition confidence — mean CTC confidence of the characters (0–1). |
+| `x1`, `y1` | float | Top-left corner of the text box (original image coordinates). |
+| `x2`, `y2` | float | Bottom-right corner of the text box. |
+
+---
+
+### POST /ocr/load
+
+Optional warm-up: pre-loads det + rec models into memory. No-op if already loaded with the same precision.
+
+**Query parameter or JSON body:**
+- `precision`: `"fp16"` (default) or `"fp32"`
+
+**Success response:**
+
+```json
+{
+  "success": true,
+  "precision": "fp16"
+}
+```
+
+---
+
+### POST /ocr/clear
+
+Unload the active PP-OCRv6 Small models and free their memory. The next `/ocr` call will lazily reload them.
+
+**Success response:**
+
+```json
+{ "success": true }
+```
+
+---
+
 ## Usage Examples
 
 ### Python
@@ -223,10 +358,8 @@ BASE = "http://localhost:13462"
 r = requests.get(f"{BASE}/status")
 print(r.json())
 
-# Load a model
+# 1. Object Detection
 requests.post(f"{BASE}/load", json={"modelType": "capital-building-detect"})
-
-# Detect objects in a screenshot
 with open("screenshot.png", "rb") as f:
     r = requests.post(
         f"{BASE}/detect",
@@ -235,9 +368,24 @@ with open("screenshot.png", "rb") as f:
         headers={"Content-Type": "application/octet-stream"},
     )
 print(r.json()["detections"])
-
-# Unload model when done
 requests.post(f"{BASE}/clear")
+
+# 2. Text Recognition (FP16 by default)
+with open("screenshot.png", "rb") as f:
+    r = requests.post(
+        f"{BASE}/ocr",
+        params={"precision": "fp16", "limit": 960},
+        data=f.read(),
+        headers={"Content-Type": "application/octet-stream"},
+    )
+for line in r.json()["results"]:
+    print(line["text"], line["score"], line["confidence"], line["x1"], line["y1"])
+
+# Optional: pre-warm OCR models
+requests.post(f"{BASE}/ocr/load", params={"precision": "fp16"})
+
+# Optional: free OCR memory when done
+requests.post(f"{BASE}/ocr/clear")
 ```
 
 ### ADB + curl (on-device)
@@ -246,10 +394,27 @@ requests.post(f"{BASE}/clear")
 # Forward port from PC to device
 adb forward tcp:13462 tcp:13462
 
-# Now use curl from your PC
+# Check status
 curl http://localhost:13462/status
+
+# Object detection
 curl -X POST http://localhost:13462/load -d '{"modelType":"numbers"}'
 curl -X POST http://localhost:13462/detect \
   -H "Content-Type: application/octet-stream" \
   --data-binary @image.png
+curl -X POST http://localhost:13462/clear
+
+# Text recognition (FP16 default)
+curl -X POST http://localhost:13462/ocr \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @image.png
+
+# Text recognition (FP32)
+curl -X POST "http://localhost:13462/ocr?precision=fp32" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @image.png
+
+# Optional OCR model management
+curl -X POST "http://localhost:13462/ocr/load?precision=fp16"
+curl -X POST http://localhost:13462/ocr/clear
 ```
