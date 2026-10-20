@@ -2,7 +2,7 @@
 
 **Version:** 1.11
 
-An Android app that runs a local HTTP server exposing detector inference and text recognition (PP-OCRv6 Small FP16). The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
+An Android app that runs a local HTTP server exposing detector inference and text recognition (PP-OCRv6 Tiny FP16). The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
 
 ---
 
@@ -11,7 +11,7 @@ An Android app that runs a local HTTP server exposing detector inference and tex
 1. [Quick Start](#quick-start)
 2. [Supported Models](#supported-models)
 3. [API Reference](#api-reference)
-4. [Text Recognition (PP-OCRv6 Small)](#text-recognition-ppocrv6-small)
+4. [Text Recognition (PP-OCRv6 Tiny)](#text-recognition-ppocrv6-tiny)
 5. [Usage Examples](#usage-examples)
 
 ---
@@ -73,9 +73,9 @@ internally by the self-contained [`POST /ocr`](#post-ocr) endpoint:
 
 | Model | Model file | Purpose |
 |---|---|---|
-| PP-OCRv6 Small (det fp16) | `det_fp16.onnx` | DB text-line detection (~5.0 MB) |
-| PP-OCRv6 Small (rec fp16) | `rec_fp16.onnx` | CTC text recognition (~10.6 MB) |
-| PP-OCRv6 character list | `rec_characters.json` | Character dictionary for CTC decoding |
+| PP-OCRv6 Tiny (det fp16) | `ppocr_v6_tiny_det.onnx` | DB text-line detection (~967 KB) |
+| PP-OCRv6 Tiny (rec fp16) | `ppocr_v6_tiny_rec.onnx` | CTC text recognition (~2.16 MB) |
+| PP-OCRv6 character list | `ppocr_v6_tiny_characters.json` | Character dictionary for CTC decoding |
 
 > **Note:** `modelType` is required. Omitting it or passing an unrecognized value will result in an error.
 > If a model asset has not been packaged under `app/src/main/assets`, `/load` will fail with a missing-model error.
@@ -112,7 +112,7 @@ Health check. Returns the server status, version, and current model state.
 | `version` | string | Current server version. |
 | `modelLoaded` | boolean | Whether a model is currently loaded in memory. |
 | `modelType` | string \| null | The `modelType` that was used to load the current model, or `null` if none. |
-| `ocrLoaded` | boolean | Whether PP-OCRv6 Small det + rec models are currently loaded in memory. |
+| `ocrLoaded` | boolean | Whether PP-OCRv6 Tiny det + rec models are currently loaded in memory. |
 
 ---
 
@@ -226,12 +226,12 @@ Unload model weights and free the TFLite interpreter.
 
 ---
 
-## Text Recognition (PP-OCRv6 Small)
+## Text Recognition (PP-OCRv6 Tiny)
 
 Text recognition is exposed as a **self-contained endpoint**: `POST /ocr`.
-It requires no explicit load step — the PP-OCRv6 Small FP16 detection and recognition
+It requires no explicit load step — the PP-OCRv6 Tiny FP16 detection and recognition
 models are loaded lazily on the first request and stay resident in memory for fast
-subsequent calls (~15.6 MB combined, optimized for mobile efficiency).
+subsequent calls (~3.1 MB combined, optimized for mobile efficiency).
 
 Two optional management endpoints are also provided: `POST /ocr/load`
 (pre-warm models) and `POST /ocr/clear` (free OCR memory on demand). Models
@@ -243,7 +243,7 @@ are also released automatically when the foreground service is destroyed.
 2. **DB postprocess** — the probability map is binarized at `detThreshold` (default `0.20`), 8-connected components are extracted, boxes below `boxThreshold` (default `0.45`) are filtered out, expanded by `unclipRatio` (default `1.4`), and scaled back to original image space.
 3. **Reading order sorting** — text boxes are grouped into horizontal rows and sorted top-to-bottom, left-to-right.
 4. **Recognition preprocess** — each text box is cropped, resized to height `48` (width clamped to `2..3200`), zero-padded to a minimum width of `recMinWidth` (default `320`), and normalized to `[-1, 1]` in RGB channel order.
-5. **CTC greedy decode** — index `0` is blank, index `1..N` map to characters in `rec_characters.json`, and index `N + 1` is space (`" "`).
+5. **CTC greedy decode** — index `0` is blank, index `1..N` map to characters in `ppocr_v6_tiny_characters.json`, and index `N + 1` is space (`" "`).
 
 ### POST /ocr
 
@@ -316,7 +316,7 @@ Optional warm-up: pre-loads det + rec models into memory. No-op if already loade
 
 ### POST /ocr/clear
 
-Unload the active PP-OCRv6 Small models and free their memory. The next `/ocr` call will lazily reload them.
+Unload the active PP-OCRv6 Tiny models and free their memory. The next `/ocr` call will lazily reload them.
 
 **Success response:**
 

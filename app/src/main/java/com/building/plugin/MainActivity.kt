@@ -77,54 +77,42 @@ fun ServiceInfo(modifier: Modifier = Modifier) {
         if (isRunning) return
         scope.launch {
             isRunning = true
-            resultText = "正在预热识别模型与准备图片…"
+            resultText = "正在预热模型并执行 OCR 全流程识别…"
             try {
                 withContext(Dispatchers.Default) {
                     PpOcrEngine.initialize(context)
 
-                    // 1. 预先加载 Recognition 模型和字典（确保加载耗时不计入纯推理时间）
-                    PpOcrEngine.loadRec()
+                    // 1. 预先加载全流程模型与字典（确保模型加载时间不计入纯推理耗时）
+                    PpOcrEngine.load()
 
-                    // 2. 解码测试图片并裁剪指定范围 [49, 139, 117, 162]
+                    // 2. 解码测试图片 example.png
                     val options = BitmapFactory.Options().apply {
                         inPreferredConfig = Bitmap.Config.ARGB_8888
                     }
-                    val fullBitmap = context.assets.open("example.png").use { stream ->
+                    val bitmap = context.assets.open("example.png").use { stream ->
                         BitmapFactory.decodeStream(stream, null, options)
                     } ?: throw IllegalStateException("无法从 assets 中加载 example.png")
 
-                    val left = 49
-                    val top = 139
-                    val right = 117
-                    val bottom = 162
-                    val width = right - left
-                    val height = bottom - top
-
-                    val cropBitmap = try {
-                        Bitmap.createBitmap(fullBitmap, left, top, width, height)
-                    } finally {
-                        fullBitmap.recycle()
-                    }
-
-                    // 3. 仅对 Recognition 模型推理进行计时（不计入加载和裁剪时间）
-                    val result = try {
+                    // 3. 全流程识别（Detection + Batch Recognition）并计算纯推理时间
+                    val (results, elapsed) = try {
                         val start = System.currentTimeMillis()
-                        val recResult = PpOcrEngine.recognizeText(cropBitmap)
-                        val elapsed = System.currentTimeMillis() - start
-                        Pair(recResult, elapsed)
+                        val res = PpOcrEngine.recognize(bitmap = bitmap)
+                        val time = System.currentTimeMillis() - start
+                        Pair(res, time)
                     } finally {
-                        cropBitmap.recycle()
+                        bitmap.recycle()
                     }
 
-                    val rec = result.first
-                    val elapsed = result.second
-                    val conf = (rec.confidence * 100).roundToInt() / 100f
-
-                    resultText = buildString {
-                        append("识别区域: [$left, $top, $right, $bottom] (${width}×${height})\n\n")
-                        append("纯推理耗时: ${elapsed} ms (不含模型与图片加载)\n")
-                        append("识别文本: \"${rec.text.ifEmpty { "(未识别到文字)" }}\"\n")
-                        append("置信度: $conf")
+                    if (results.isEmpty()) {
+                        resultText = "全流程识别完成（纯推理耗时: ${elapsed} ms）\n未检测到任何文字"
+                    } else {
+                        val details = results.mapIndexed { idx, ocr ->
+                            val conf = (ocr.confidence * 100).roundToInt() / 100f
+                            val score = (ocr.score * 100).roundToInt() / 100f
+                            val box = "[${ocr.box.left.toInt()}, ${ocr.box.top.toInt()}, ${ocr.box.right.toInt()}, ${ocr.box.bottom.toInt()}]"
+                            "${idx + 1}. \"${ocr.text}\"\n   置信度: $conf | 检测分: $score | 坐标: $box"
+                        }.joinToString("\n\n")
+                        resultText = "全流程识别完成（纯推理耗时: ${elapsed} ms，不含加载）\n共识别到 ${results.size} 条文本：\n\n$details"
                     }
                 }
             } catch (e: Exception) {

@@ -16,7 +16,7 @@ import com.building.plugin.ocr.PpOcrEngine
  *   POST /load       — load model weights
  *   POST /detect     — run inference on a posted image
  *   POST /clear      — unload model weights
- *   POST /ocr        — self-contained text recognition (PP-OCRv6 Small FP16)
+ *   POST /ocr        — self-contained text recognition (PP-OCRv6 Tiny FP16)
  *   POST /ocr/load   — pre-load OCR models (optional warm-up)
  *   POST /ocr/clear  — unload OCR models
  */
@@ -162,7 +162,7 @@ class DetectorHttpServer(port: Int) : NanoHTTPD(port) {
     // ── POST /ocr ───────────────────────────────────────────────────────────
 
     /**
-     * Self-contained text recognition endpoint (PP-OCRv6 Small FP16).
+     * Self-contained text recognition endpoint (PP-OCRv6 Tiny FP16).
      *
      * Query parameters (all optional):
      *   limit        — det long-side limit (default 960)

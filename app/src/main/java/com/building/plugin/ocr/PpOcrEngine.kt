@@ -18,7 +18,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * PP-OCRv6 Small (FP16) text recognition engine.
+ * PP-OCRv6 Tiny (FP16) text recognition engine.
  * Implemented in pure Kotlin + Android native graphics with zero OpenCV dependencies.
  *
  * Pipeline:
@@ -27,7 +27,7 @@ import kotlin.math.roundToInt
  *  2. DB postprocess — binarize probability map, extract 8-connected components,
  *     filter by mean confidence, expand boxes (unclip), scale back to original image space,
  *     and sort into natural top-to-bottom reading order.
- *  3. rec preprocess — crop each text box, resize to height 48, zero-pad width
+ *  3. rec preprocess (batch) — crop each text box, resize to height 48, zero-pad width
  *     to at least [recMinWidth], normalize to [-1, 1] in RGB channel order.
  *  4. CTC greedy decode — blank = index 0, dict characters = index 1..N, space = index N+1.
  */
@@ -35,9 +35,9 @@ object PpOcrEngine {
 
     private const val TAG = "PpOcrEngine"
 
-    private const val DET_ASSET = "det_fp16.onnx"
-    private const val REC_ASSET = "rec_fp16.onnx"
-    private const val CHARACTERS_ASSET = "rec_characters.json"
+    private const val DET_ASSET = "ppocr_v6_tiny_det.onnx"
+    private const val REC_ASSET = "ppocr_v6_tiny_rec.onnx"
+    private const val CHARACTERS_ASSET = "ppocr_v6_tiny_characters.json"
 
     /** Fixed input height for recognizer */
     private const val REC_HEIGHT = 48
@@ -62,6 +62,9 @@ object PpOcrEngine {
 
     /** Default rec minimum padded width */
     const val DEFAULT_REC_MIN_WIDTH = 320
+
+    /** Fixed batch size for recognition model batch inference */
+    private const val REC_BATCH_SIZE = 6
 
     private var appContext: Context? = null
     private var ortEnvironment: OrtEnvironment? = null
@@ -257,37 +260,49 @@ object PpOcrEngine {
             // Sort boxes into natural reading order (row by row, left to right)
             val boxes = sortBoxesIntoReadingOrder(rawBoxes)
 
-            // 2. Recognition for each box
+            // 2. Recognition for boxes in batches of 6 (Batching Parallelism)
             val dict = dictChars ?: throw IllegalStateException("Dictionary not loaded")
             val results = mutableListOf<OcrResult>()
-            for (box in boxes) {
-                val cropW = box.x1 - box.x0 + 1
-                val cropH = box.y1 - box.y0 + 1
-                if (cropW <= 0 || cropH <= 0) continue
 
-                val crop = Bitmap.createBitmap(src, box.x0, box.y0, cropW, cropH)
+            for (chunk in boxes.chunked(REC_BATCH_SIZE)) {
+                val crops = mutableListOf<Pair<TextBox, Bitmap>>()
+                for (box in chunk) {
+                    val cropW = box.x1 - box.x0 + 1
+                    val cropH = box.y1 - box.y0 + 1
+                    if (cropW <= 0 || cropH <= 0) continue
+                    val crop = Bitmap.createBitmap(src, box.x0, box.y0, cropW, cropH)
+                    crops.add(Pair(box, crop))
+                }
+                if (crops.isEmpty()) continue
+
                 try {
-                    val recInput = recPreprocess(crop, recMinWidth)
-                    val logits = runRec(recInput)
-                    val (text, confidence) = ctcDecode(logits, dict)
+                    val batchBitmaps = crops.map { it.second }
+                    val batchInput = recPreprocessBatch(batchBitmaps, recMinWidth)
+                    val batchLogits = runRecBatch(batchInput)
 
-                    if (text.isNotEmpty()) {
-                        results.add(
-                            OcrResult(
-                                text = text,
-                                score = box.score,
-                                confidence = confidence,
-                                box = RectF(
-                                    box.x0.toFloat(),
-                                    box.y0.toFloat(),
-                                    box.x1.toFloat(),
-                                    box.y1.toFloat()
+                    for (i in crops.indices) {
+                        val (text, confidence) = ctcDecode(batchLogits[i], dict)
+                        if (text.isNotEmpty()) {
+                            val box = crops[i].first
+                            results.add(
+                                OcrResult(
+                                    text = text,
+                                    score = box.score,
+                                    confidence = confidence,
+                                    box = RectF(
+                                        box.x0.toFloat(),
+                                        box.y0.toFloat(),
+                                        box.x1.toFloat(),
+                                        box.y1.toFloat()
+                                    )
                                 )
                             )
-                        )
+                        }
                     }
                 } finally {
-                    crop.recycle()
+                    for (pair in crops) {
+                        pair.second.recycle()
+                    }
                 }
             }
             return results
@@ -306,12 +321,14 @@ object PpOcrEngine {
 
         val env = ortEnvironment ?: OrtEnvironment.getEnvironment()
         val detFile = ModelAssetManager.resolveModelFile(context, DET_ASSET)
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        OrtSession.SessionOptions().use { sessionOptions ->
+            // Use BASIC_OPT to keep native NCHW layout and prevent the optimizer
+            // from rewriting MaxPool nodes to unsupported com.ms.internal.nhwc ops on Android.
+            sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+            detSession = env.createSession(detFile.absolutePath, sessionOptions)
         }
-        detSession = env.createSession(detFile.absolutePath, sessionOptions)
         ortEnvironment = env
-        Log.i(TAG, "PP-OCRv6 Small Det (FP16) loaded")
+        Log.i(TAG, "PP-OCRv6 Tiny Det (FP16) loaded")
     }
 
     @Synchronized
@@ -322,13 +339,15 @@ object PpOcrEngine {
         val recFile = ModelAssetManager.resolveModelFile(context, REC_ASSET)
         val dict = dictChars ?: loadDict(context)
 
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        OrtSession.SessionOptions().use { sessionOptions ->
+            // Use BASIC_OPT to keep native NCHW layout and prevent the optimizer
+            // from rewriting MaxPool nodes to unsupported com.ms.internal.nhwc ops on Android.
+            sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+            recSession = env.createSession(recFile.absolutePath, sessionOptions)
         }
-        recSession = env.createSession(recFile.absolutePath, sessionOptions)
         ortEnvironment = env
         dictChars = dict
-        Log.i(TAG, "PP-OCRv6 Small Rec (FP16) loaded, dict size=${dict.size}")
+        Log.i(TAG, "PP-OCRv6 Tiny Rec (FP16) loaded, dict size=${dict.size}")
     }
 
     @Synchronized
@@ -547,56 +566,86 @@ object PpOcrEngine {
 
     // ── Recognition: Preprocess + Inference + CTC Decode ─────────────────────
 
-    private fun recPreprocess(crop: Bitmap, minWidth: Int): RecInput {
-        val h = crop.height
-        val w = crop.width
-        val rw = ceil(REC_HEIGHT.toFloat() * w / h).toInt().coerceIn(2, REC_MAX_WIDTH)
-        val targetW = max(minWidth, rw)
+    private fun recPreprocessBatch(crops: List<Bitmap>, minWidth: Int): RecBatchInput {
+        val batchSize = crops.size
+        require(batchSize > 0) { "Crops list must not be empty" }
 
-        val scaled = Bitmap.createScaledBitmap(crop, rw, REC_HEIGHT, true)
-        try {
-            val pixels = IntArray(rw * REC_HEIGHT)
-            scaled.getPixels(pixels, 0, rw, 0, 0, rw, REC_HEIGHT)
-
-            val plane = REC_HEIGHT * targetW
-            val data = FloatArray(3 * plane) // Zero-padded by default
-            for (y in 0 until REC_HEIGHT) {
-                val rowOffset = y * targetW
-                val pixelRowOffset = y * rw
-                for (x in 0 until rw) {
-                    val pixel = pixels[pixelRowOffset + x]
-                    val r = ((pixel shr 16) and 0xFF) / 255.0f
-                    val g = ((pixel shr 8) and 0xFF) / 255.0f
-                    val b = (pixel and 0xFF) / 255.0f
-
-                    // RGB order normalized to [-1, 1]
-                    data[rowOffset + x] = (r - 0.5f) / 0.5f
-                    data[plane + rowOffset + x] = (g - 0.5f) / 0.5f
-                    data[2 * plane + rowOffset + x] = (b - 0.5f) / 0.5f
-                }
-            }
-            return RecInput(data, targetW)
-        } finally {
-            if (scaled !== crop) {
-                scaled.recycle()
+        val rws = IntArray(batchSize)
+        var maxRw = minWidth
+        for (i in 0 until batchSize) {
+            val crop = crops[i]
+            val rw = ceil(REC_HEIGHT.toFloat() * crop.width / crop.height).toInt().coerceIn(2, REC_MAX_WIDTH)
+            rws[i] = rw
+            if (rw > maxRw) {
+                maxRw = rw
             }
         }
+        val targetW = max(minWidth, maxRw)
+        val plane = REC_HEIGHT * targetW
+        val sampleSize = 3 * plane
+        val data = FloatArray(batchSize * sampleSize) // Defaults to 0.0f (zero padding)
+
+        for (b in 0 until batchSize) {
+            val crop = crops[b]
+            val rw = rws[b]
+            val scaled = Bitmap.createScaledBitmap(crop, rw, REC_HEIGHT, true)
+            try {
+                val pixels = IntArray(rw * REC_HEIGHT)
+                scaled.getPixels(pixels, 0, rw, 0, 0, rw, REC_HEIGHT)
+
+                val sampleOffset = b * sampleSize
+                for (y in 0 until REC_HEIGHT) {
+                    val rowOffset = y * targetW
+                    val pixelRowOffset = y * rw
+                    for (x in 0 until rw) {
+                        val pixel = pixels[pixelRowOffset + x]
+                        val r = ((pixel shr 16) and 0xFF) / 255.0f
+                        val g = ((pixel shr 8) and 0xFF) / 255.0f
+                        val bChan = (pixel and 0xFF) / 255.0f
+
+                        // RGB order normalized to [-1, 1]
+                        data[sampleOffset + rowOffset + x] = (r - 0.5f) / 0.5f
+                        data[sampleOffset + plane + rowOffset + x] = (g - 0.5f) / 0.5f
+                        data[sampleOffset + 2 * plane + rowOffset + x] = (bChan - 0.5f) / 0.5f
+                    }
+                }
+            } finally {
+                if (scaled !== crop) {
+                    scaled.recycle()
+                }
+            }
+        }
+
+        return RecBatchInput(data, batchSize, targetW)
     }
 
-    private fun runRec(input: RecInput): Array<FloatArray> {
+    private fun runRecBatch(input: RecBatchInput): Array<Array<FloatArray>> {
         val env = ortEnvironment ?: throw IllegalStateException("rec session not loaded")
         val session = recSession ?: throw IllegalStateException("rec session not loaded")
 
-        val shape = longArrayOf(1, 3, REC_HEIGHT.toLong(), input.width.toLong())
+        val shape = longArrayOf(
+            input.batchSize.toLong(),
+            3,
+            REC_HEIGHT.toLong(),
+            input.width.toLong()
+        )
         val tensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(input.data), shape)
         tensor.use {
             val results = session.run(mapOf(session.inputNames.first() to it))
             results.use { r ->
                 @Suppress("UNCHECKED_CAST")
-                val out = r[0].value as Array<Array<FloatArray>>
-                return out[0]
+                return r[0].value as Array<Array<FloatArray>>
             }
         }
+    }
+
+    private fun recPreprocess(crop: Bitmap, minWidth: Int): RecInput {
+        val batchInput = recPreprocessBatch(listOf(crop), minWidth)
+        return RecInput(batchInput.data, batchInput.width)
+    }
+
+    private fun runRec(input: RecInput): Array<FloatArray> {
+        return runRecBatch(RecBatchInput(input.data, 1, input.width))[0]
     }
 
     private fun ctcDecode(logits: Array<FloatArray>, dict: List<String>): Pair<String, Float> {
@@ -655,6 +704,12 @@ object PpOcrEngine {
 
     private data class RecInput(
         val data: FloatArray,
+        val width: Int
+    )
+
+    private data class RecBatchInput(
+        val data: FloatArray,
+        val batchSize: Int,
         val width: Int
     )
 
