@@ -73,6 +73,10 @@ object PpOcrEngine {
     val isLoaded: Boolean
         @Synchronized get() = detSession != null && recSession != null && dictChars != null
 
+    /** Whether rec session and dictionary are currently loaded. */
+    val isRecLoaded: Boolean
+        @Synchronized get() = recSession != null && dictChars != null
+
     /** Stores the application context. Must be called before [recognize] or [load]. */
     fun initialize(context: Context) {
         appContext = context.applicationContext
@@ -91,6 +95,18 @@ object PpOcrEngine {
     }
 
     /**
+     * Pre-loads only the recognition model and dictionary into memory.
+     * No-op if already loaded.
+     */
+    @Synchronized
+    fun loadRec() {
+        if (isRecLoaded) return
+        val context = appContext
+            ?: throw IllegalStateException("PpOcrEngine must be initialized before loading")
+        ensureRecLoaded(context)
+    }
+
+    /**
      * Closes the active det/rec sessions and releases model memory.
      */
     @Synchronized
@@ -101,6 +117,81 @@ object PpOcrEngine {
         recSession = null
         dictChars = null
         ortEnvironment = null
+    }
+
+    /**
+     * Runs text recognition only (no detection model) on the given cropped bitmap.
+     *
+     * @param cropBitmap cropped image patch containing text
+     * @param recMinWidth minimum width for recognition padding (default 320)
+     * @return recognized text and recognition confidence
+     */
+    @Synchronized
+    fun recognizeText(
+        cropBitmap: Bitmap,
+        recMinWidth: Int = DEFAULT_REC_MIN_WIDTH
+    ): RecResult {
+        return try {
+            recognizeTextInternal(cropBitmap, recMinWidth)
+        } catch (e: Exception) {
+            Log.w(TAG, "OCR recognition inference failed, reloading rec model and retrying once", e)
+            recSession?.close()
+            recSession = null
+            val context = appContext
+                ?: throw IllegalStateException("PpOcrEngine must be initialized before use")
+            ensureRecLoaded(context)
+            recognizeTextInternal(cropBitmap, recMinWidth)
+        }
+    }
+
+    /**
+     * Runs text recognition only on the specified sub-rectangle [left, top, right, bottom]
+     * of the given bitmap without running the detection model.
+     */
+    @Synchronized
+    fun recognizeRegion(
+        bitmap: Bitmap,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        recMinWidth: Int = DEFAULT_REC_MIN_WIDTH
+    ): RecResult {
+        val clampedL = left.coerceIn(0, bitmap.width - 1)
+        val clampedT = top.coerceIn(0, bitmap.height - 1)
+        val clampedR = right.coerceIn(clampedL + 1, bitmap.width)
+        val clampedB = bottom.coerceIn(clampedT + 1, bitmap.height)
+        val w = clampedR - clampedL
+        val h = clampedB - clampedT
+
+        val crop = Bitmap.createBitmap(bitmap, clampedL, clampedT, w, h)
+        try {
+            return recognizeText(crop, recMinWidth)
+        } finally {
+            crop.recycle()
+        }
+    }
+
+    private fun recognizeTextInternal(
+        cropBitmap: Bitmap,
+        recMinWidth: Int
+    ): RecResult {
+        val context = appContext
+            ?: throw IllegalStateException("PpOcrEngine must be initialized before use")
+        ensureRecLoaded(context)
+
+        val src = toSoftwareBitmap(cropBitmap)
+        try {
+            val dict = dictChars ?: throw IllegalStateException("Dictionary not loaded")
+            val recInput = recPreprocess(src, recMinWidth)
+            val logits = runRec(recInput)
+            val (text, confidence) = ctcDecode(logits, dict)
+            return RecResult(text = text, confidence = confidence)
+        } finally {
+            if (src !== cropBitmap) {
+                src.recycle()
+            }
+        }
     }
 
     /**
@@ -209,27 +300,42 @@ object PpOcrEngine {
 
     // ── Model loading ───────────────────────────────────────────────────────
 
+    @Synchronized
+    private fun ensureDetLoaded(context: Context) {
+        if (detSession != null) return
+
+        val env = ortEnvironment ?: OrtEnvironment.getEnvironment()
+        val detFile = ModelAssetManager.resolveModelFile(context, DET_ASSET)
+        val sessionOptions = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        }
+        detSession = env.createSession(detFile.absolutePath, sessionOptions)
+        ortEnvironment = env
+        Log.i(TAG, "PP-OCRv6 Small Det (FP16) loaded")
+    }
+
+    @Synchronized
+    private fun ensureRecLoaded(context: Context) {
+        if (recSession != null && dictChars != null) return
+
+        val env = ortEnvironment ?: OrtEnvironment.getEnvironment()
+        val recFile = ModelAssetManager.resolveModelFile(context, REC_ASSET)
+        val dict = dictChars ?: loadDict(context)
+
+        val sessionOptions = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        }
+        recSession = env.createSession(recFile.absolutePath, sessionOptions)
+        ortEnvironment = env
+        dictChars = dict
+        Log.i(TAG, "PP-OCRv6 Small Rec (FP16) loaded, dict size=${dict.size}")
+    }
+
+    @Synchronized
     private fun ensureLoaded(context: Context) {
         if (isLoaded) return
-
-        synchronized(this) {
-            if (isLoaded) return
-
-            val env = ortEnvironment ?: OrtEnvironment.getEnvironment()
-            val detFile = ModelAssetManager.resolveModelFile(context, DET_ASSET)
-            val recFile = ModelAssetManager.resolveModelFile(context, REC_ASSET)
-            val dict = dictChars ?: loadDict(context)
-
-            val sessionOptions = OrtSession.SessionOptions().apply {
-                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-            }
-
-            detSession = env.createSession(detFile.absolutePath, sessionOptions)
-            recSession = env.createSession(recFile.absolutePath, sessionOptions)
-            ortEnvironment = env
-            dictChars = dict
-            Log.i(TAG, "PP-OCRv6 Small (FP16) loaded, dict size=${dict.size}")
-        }
+        ensureDetLoaded(context)
+        ensureRecLoaded(context)
     }
 
     /** Loads the character dictionary JSON array from assets. */
