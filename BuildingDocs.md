@@ -1,6 +1,6 @@
 # ZKQbuilding — Detector Inference Service for Android
 
-**Version:** 1.11
+**Version:** 1.12
 
 An Android app that runs a local HTTP server exposing detector inference and text recognition (PP-OCRv6 Tiny FP16). The app launches a foreground service on startup, making the detection API available to other apps or automation tools on the device via `http://localhost:13462`.
 
@@ -99,7 +99,7 @@ Health check. Returns the server status, version, and current model state.
 ```json
 {
   "status": "running",
-  "version": "1.11",
+  "version": "1.12",
   "modelLoaded": true,
   "modelType": "walls-detect",
   "ocrLoaded": false
